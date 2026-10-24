@@ -8,10 +8,20 @@ const {
   updateScheme,
   deleteScheme,
   toggleSchemeStatus,
+  getSchemeStats,
 } = require('../controllers/schemeController');
+
 const { protect, authorize, optionalAuth } = require('../middleware/authMiddleware');
 
 router.get('/categories', getCategories);
+
+router.get(
+  '/stats',
+  protect,
+  authorize('admin'),
+  getSchemeStats
+);
+
 router.get('/', optionalAuth, getSchemes);
 router.get('/:id', optionalAuth, getSchemeById);
 

@@ -55,7 +55,7 @@ export default function Schemes() {
       if (gender && gender !== 'All') params.append('gender', gender);
       if (sort) params.append('sort', sort);
       params.append('page', page);
-      params.append('limit', 9);
+      params.append('limit', 3);
 
       const res = await api.get(`/schemes?${params.toString()}`);
       setSchemes(res.data.schemes || []);

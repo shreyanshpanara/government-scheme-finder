@@ -1,14 +1,15 @@
+
 const mongoose = require('mongoose');
 const Scheme = require('../models/Scheme');
 
-// Helper to escape regex characters safely
+// Helper to safely escape regex characters
 function escapeRegex(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// @desc    Get all schemes with filtering, search, sorting & pagination
-// @route   GET /api/schemes
-// @access  Public
+// @desc Get all schemes with filtering, search, sorting and pagination
+// @route GET /api/schemes
+// @access Public
 exports.getSchemes = async (req, res, next) => {
   try {
     const {
@@ -40,13 +41,13 @@ exports.getSchemes = async (req, res, next) => {
         query.active = status.toLowerCase() === 'active';
       }
     } else {
-      // Default: show active schemes for public portal
       query.active = true;
     }
 
-    // Text search on name, code, description, ministry, department, tags
+    // Search schemes
     if (search && search.trim()) {
       const escapedSearch = escapeRegex(search.trim());
+
       query.$or = [
         { name: { $regex: escapedSearch, $options: 'i' } },
         { code: { $regex: escapedSearch, $options: 'i' } },
@@ -62,19 +63,24 @@ exports.getSchemes = async (req, res, next) => {
       query.category = category;
     }
 
-    // Level (Central / State)
+    // Level filter
     if (level && level !== 'All') {
       query.level = level;
     }
 
-    // State filter (include schemes that apply to All India or the specified state)
+    // State filter
     if (state && state !== 'All India') {
       query.$and = query.$and || [];
+
       query.$and.push({
         $or: [
           { state: 'All India' },
-          { state: state },
-          { 'eligibilityCriteria.allowedStates': { $in: ['All India', state] } },
+          { state },
+          {
+            'eligibilityCriteria.allowedStates': {
+              $in: ['All India', state],
+            },
+          },
         ],
       });
     }
@@ -82,6 +88,7 @@ exports.getSchemes = async (req, res, next) => {
     // Gender filter
     if (gender && gender !== 'All') {
       query.$and = query.$and || [];
+
       query.$and.push({
         $or: [
           { 'eligibilityCriteria.gender': 'All' },
@@ -93,8 +100,10 @@ exports.getSchemes = async (req, res, next) => {
     // Age filter
     if (age) {
       const numAge = Number(age);
-      if (!isNaN(numAge)) {
+
+      if (!Number.isNaN(numAge)) {
         query.$and = query.$and || [];
+
         query.$and.push({
           'eligibilityCriteria.minAge': { $lte: numAge },
           'eligibilityCriteria.maxAge': { $gte: numAge },
@@ -102,25 +111,35 @@ exports.getSchemes = async (req, res, next) => {
       }
     }
 
-    // Income ceiling filter
+    // Income filter
     if (maxIncome) {
       const numIncome = Number(maxIncome);
-      if (!isNaN(numIncome)) {
+
+      if (!Number.isNaN(numIncome)) {
         query.$and = query.$and || [];
+
         query.$and.push({
           $or: [
             { 'eligibilityCriteria.maxAnnualIncome': null },
-            { 'eligibilityCriteria.maxAnnualIncome': { $gte: numIncome } },
+            {
+              'eligibilityCriteria.maxAnnualIncome': {
+                $gte: numIncome,
+              },
+            },
           ],
         });
       }
     }
 
-    // Tag filter
+    // Tags filter
     const tagFilter = tag || tags;
+
     if (tagFilter && tagFilter !== 'All') {
       const escapedTag = escapeRegex(tagFilter.trim());
-      query.tags = { $in: [new RegExp(`^${escapedTag}$`, 'i')] };
+
+      query.tags = {
+        $in: [new RegExp(`^${escapedTag}$`, 'i')],
+      };
     }
 
     // Pagination
@@ -130,14 +149,27 @@ exports.getSchemes = async (req, res, next) => {
 
     // Sorting
     let sortBy = { createdAt: -1 };
-    if (sort === 'name-asc') sortBy = { name: 1 };
-    if (sort === 'name-desc') sortBy = { name: -1 };
-    if (sort === 'popular') sortBy = { featured: -1, createdAt: -1 };
+
+    if (sort === 'name-asc') {
+      sortBy = { name: 1 };
+    }
+
+    if (sort === 'name-desc') {
+      sortBy = { name: -1 };
+    }
+
+    if (sort === 'popular') {
+      sortBy = { featured: -1, createdAt: -1 };
+    }
 
     const total = await Scheme.countDocuments(query);
-    const schemes = await Scheme.find(query).sort(sortBy).skip(skip).limit(limitNum);
 
-    res.status(200).json({
+    const schemes = await Scheme.find(query)
+      .sort(sortBy)
+      .skip(skip)
+      .limit(limitNum);
+
+    return res.status(200).json({
       status: 'success',
       count: schemes.length,
       total,
@@ -150,9 +182,9 @@ exports.getSchemes = async (req, res, next) => {
   }
 };
 
-// @desc    Get single scheme details by ID or code
-// @route   GET /api/schemes/:id
-// @access  Public
+// @desc Get single scheme by ID or code
+// @route GET /api/schemes/:id
+// @access Public
 exports.getSchemeById = async (req, res, next) => {
   try {
     const queryId = req.params.id ? req.params.id.trim() : '';
@@ -161,8 +193,11 @@ exports.getSchemeById = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(queryId)) {
       scheme = await Scheme.findById(queryId);
     }
+
     if (!scheme) {
-      scheme = await Scheme.findOne({ code: queryId.toUpperCase() });
+      scheme = await Scheme.findOne({
+        code: queryId.toUpperCase(),
+      });
     }
 
     if (!scheme) {
@@ -172,7 +207,7 @@ exports.getSchemeById = async (req, res, next) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
       scheme,
     });
@@ -181,9 +216,9 @@ exports.getSchemeById = async (req, res, next) => {
   }
 };
 
-// @desc    Get categories summary with counts
-// @route   GET /api/schemes/categories
-// @access  Public
+// @desc Get categories summary with counts
+// @route GET /api/schemes/categories
+// @access Public
 exports.getCategories = async (req, res, next) => {
   try {
     const categories = await Scheme.aggregate([
@@ -197,38 +232,55 @@ exports.getCategories = async (req, res, next) => {
       { $sort: { count: -1 } },
     ]);
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
-      categories: categories.map((c) => ({ name: c._id, count: c.count })),
+      categories: categories.map((c) => ({
+        name: c._id,
+        count: c.count,
+      })),
     });
   } catch (err) {
     next(err);
   }
 };
 
-// Helper to normalize scheme payload before DB operations
+// Helper to normalize scheme payload
 function normalizeSchemePayload(body) {
   const payload = { ...body };
 
   // Normalize documents
   let rawDocs = payload.documentsRequired || payload.documents;
+
   if (rawDocs) {
     if (typeof rawDocs === 'string') {
-      rawDocs = rawDocs.split(',').map((d) => d.trim()).filter(Boolean);
+      rawDocs = rawDocs
+        .split(',')
+        .map((d) => d.trim())
+        .filter(Boolean);
     }
+
     if (Array.isArray(rawDocs)) {
       payload.documentsRequired = rawDocs
         .map((doc) => {
           if (typeof doc === 'string') {
-            return { name: doc.trim(), mandatory: true, description: '' };
+            return {
+              name: doc.trim(),
+              mandatory: true,
+              description: '',
+            };
           }
+
           if (doc && typeof doc === 'object') {
             return {
               name: doc.name || '',
-              mandatory: doc.mandatory !== undefined ? Boolean(doc.mandatory) : true,
+              mandatory:
+                doc.mandatory !== undefined
+                  ? Boolean(doc.mandatory)
+                  : true,
               description: doc.description || '',
             };
           }
+
           return doc;
         })
         .filter((d) => d && d.name);
@@ -236,27 +288,39 @@ function normalizeSchemePayload(body) {
   }
 
   // Normalize tags
-  let rawTags = payload.tags;
+  const rawTags = payload.tags;
+
   if (typeof rawTags === 'string') {
-    payload.tags = rawTags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    payload.tags = rawTags
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
   } else if (Array.isArray(rawTags)) {
-    payload.tags = rawTags.map((t) => (typeof t === 'string' ? t.trim().toLowerCase() : t)).filter(Boolean);
+    payload.tags = rawTags
+      .map((t) =>
+        typeof t === 'string' ? t.trim().toLowerCase() : t
+      )
+      .filter(Boolean);
   }
 
   // Normalize benefits
   if (typeof payload.benefits === 'string') {
-    payload.benefits = payload.benefits.split(',').map((b) => b.trim()).filter(Boolean);
+    payload.benefits = payload.benefits
+      .split(',')
+      .map((b) => b.trim())
+      .filter(Boolean);
   }
 
   // Normalize status / active
   if (payload.status !== undefined && payload.active === undefined) {
     payload.active = String(payload.status).toLowerCase() === 'active';
   }
+
   if (payload.isActive !== undefined && payload.active === undefined) {
     payload.active = Boolean(payload.isActive);
   }
 
-  // Normalize website / officialWebsite
+  // Normalize website
   if (payload.website && !payload.officialWebsite) {
     payload.officialWebsite = payload.website;
   }
@@ -266,6 +330,7 @@ function normalizeSchemePayload(body) {
     payload.helpline = payload.helplineNumber;
   }
 
+  // Normalize code
   if (payload.code) {
     payload.code = payload.code.trim().toUpperCase();
   }
@@ -273,15 +338,15 @@ function normalizeSchemePayload(body) {
   return payload;
 }
 
-// @desc    Create new scheme
-// @route   POST /api/schemes
-// @access  Private/Admin
+// @desc Create new scheme
+// @route POST /api/schemes
+// @access Private/Admin
 exports.createScheme = async (req, res, next) => {
   try {
     const payload = normalizeSchemePayload(req.body);
     const scheme = await Scheme.create(payload);
 
-    res.status(201).json({
+    return res.status(201).json({
       status: 'success',
       message: 'Government scheme created successfully',
       scheme,
@@ -291,9 +356,9 @@ exports.createScheme = async (req, res, next) => {
   }
 };
 
-// @desc    Update scheme
-// @route   PUT /api/schemes/:id, PATCH /api/schemes/:id
-// @access  Private/Admin
+// @desc Update scheme
+// @route PUT/PATCH /api/schemes/:id
+// @access Private/Admin
 exports.updateScheme = async (req, res, next) => {
   try {
     const queryId = req.params.id ? req.params.id.trim() : '';
@@ -302,8 +367,13 @@ exports.updateScheme = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(queryId)) {
       targetId = queryId;
     } else {
-      const existing = await Scheme.findOne({ code: queryId.toUpperCase() });
-      if (existing) targetId = existing._id;
+      const existing = await Scheme.findOne({
+        code: queryId.toUpperCase(),
+      });
+
+      if (existing) {
+        targetId = existing._id;
+      }
     }
 
     if (!targetId) {
@@ -315,10 +385,14 @@ exports.updateScheme = async (req, res, next) => {
 
     const payload = normalizeSchemePayload(req.body);
 
-    const scheme = await Scheme.findByIdAndUpdate(targetId, payload, {
-      new: true,
-      runValidators: true,
-    });
+    const scheme = await Scheme.findByIdAndUpdate(
+      targetId,
+      payload,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!scheme) {
       return res.status(404).json({
@@ -327,7 +401,7 @@ exports.updateScheme = async (req, res, next) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
       message: 'Government scheme updated successfully',
       scheme,
@@ -337,9 +411,9 @@ exports.updateScheme = async (req, res, next) => {
   }
 };
 
-// @desc    Delete scheme
-// @route   DELETE /api/schemes/:id
-// @access  Private/Admin
+// @desc Delete scheme
+// @route DELETE /api/schemes/:id
+// @access Private/Admin
 exports.deleteScheme = async (req, res, next) => {
   try {
     const queryId = req.params.id ? req.params.id.trim() : '';
@@ -348,8 +422,13 @@ exports.deleteScheme = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(queryId)) {
       targetId = queryId;
     } else {
-      const existing = await Scheme.findOne({ code: queryId.toUpperCase() });
-      if (existing) targetId = existing._id;
+      const existing = await Scheme.findOne({
+        code: queryId.toUpperCase(),
+      });
+
+      if (existing) {
+        targetId = existing._id;
+      }
     }
 
     if (!targetId) {
@@ -360,6 +439,7 @@ exports.deleteScheme = async (req, res, next) => {
     }
 
     const deleted = await Scheme.findByIdAndDelete(targetId);
+
     if (!deleted) {
       return res.status(404).json({
         status: 'fail',
@@ -367,7 +447,7 @@ exports.deleteScheme = async (req, res, next) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
       message: 'Government scheme deleted successfully',
     });
@@ -376,9 +456,9 @@ exports.deleteScheme = async (req, res, next) => {
   }
 };
 
-// @desc    Toggle scheme active status
-// @route   PATCH /api/schemes/:id/toggle-status
-// @access  Private/Admin
+// @desc Toggle scheme active status
+// @route PATCH /api/schemes/:id/toggle-status
+// @access Private/Admin
 exports.toggleSchemeStatus = async (req, res, next) => {
   try {
     const queryId = req.params.id ? req.params.id.trim() : '';
@@ -387,7 +467,9 @@ exports.toggleSchemeStatus = async (req, res, next) => {
     if (mongoose.Types.ObjectId.isValid(queryId)) {
       scheme = await Scheme.findById(queryId);
     } else {
-      scheme = await Scheme.findOne({ code: queryId.toUpperCase() });
+      scheme = await Scheme.findOne({
+        code: queryId.toUpperCase(),
+      });
     }
 
     if (!scheme) {
@@ -400,10 +482,55 @@ exports.toggleSchemeStatus = async (req, res, next) => {
     scheme.active = !scheme.active;
     await scheme.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
-      message: `Scheme ${scheme.active ? 'activated' : 'deactivated'} successfully`,
+      message: `Scheme ${
+        scheme.active ? 'activated' : 'deactivated'
+      } successfully`,
       scheme,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc Get scheme statistics for dashboard
+// @route GET /api/schemes/stats
+// @access Private/Admin
+exports.getSchemeStats = async (req, res, next) => {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    const [
+      totalRecords,
+      activeRecords,
+      recordsAddedToday,
+    ] = await Promise.all([
+      Scheme.countDocuments(),
+
+      Scheme.countDocuments({
+        active: true,
+      }),
+
+      Scheme.countDocuments({
+        createdAt: {
+          $gte: startOfToday,
+          $lt: startOfTomorrow,
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        totalRecords,
+        activeRecords,
+        recordsAddedToday,
+      },
     });
   } catch (err) {
     next(err);
